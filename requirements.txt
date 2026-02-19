@@ -12,3 +12,5 @@ lifelines>=0.27.6
 statsmodels>=0.14.4
 scikit-learn>=1.6.1
 scikit-survival>=0.27.0
+ipython>=9.10.0
+jupyer>=1.1.1
