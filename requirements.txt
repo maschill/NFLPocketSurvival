@@ -10,5 +10,5 @@ fastparquet>=2024.11.0
 shapely>=2.0.5
 lifelines>=0.27.6
 statsmodels>=0.14.4
-scikit-survival>=0.25.0
 scikit-learn>=1.6.1
+scikit-survival>=0.27.0

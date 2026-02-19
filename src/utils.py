@@ -208,7 +208,7 @@ def life_expectancy(x, y):
 
 
 # region DATA LOAD
-def load_data(base_path="nfl-big-data-bowl-2023/"):
+def load_data(base_path="nfl-big-data-bowl-2023"):
     """Read the necessary data files and return the prepared dataframes
 
     Args:
