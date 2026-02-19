@@ -1,0 +1,6 @@
+nfl-big-data-bowl-2023/tracking.parquet
+nfl-big-data-bowl-2023/tracking_wscout.parquet
+
+.vscode/**
+.myby_cache/**
+**/__pycache__/**

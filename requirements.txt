@@ -1,0 +1,14 @@
+numpy>=2.0.0
+pandas>=2.0.0
+tqdm>=4.60.0
+plotly>=5.24
+scipy>=1.15.1
+scikit-image>=0.25.0
+matplotlib>=3.10.0
+rich>=13.9.4
+fastparquet>=2024.11.0
+shapely>=2.0.5
+lifelines>=0.27.6
+statsmodels>=0.14.4
+scikit-survival>=0.25.0
+scikit-learn>=1.6.1
