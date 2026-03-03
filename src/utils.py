@@ -1,12 +1,15 @@
 import numpy as np
 import pandas as pd
+from tqdm import tqdm, trange
 
 from scipy.spatial import Voronoi
 from scipy.spatial import distance
 import shapely
 from shapely.geometry import Point, Polygon
 
-from tqdm import tqdm, trange
+from sklearn.metrics import brier_score_loss
+
+from lifelines import CoxPHFitter
 
 tqdm.pandas()
 
@@ -35,7 +38,8 @@ def create_nfl_field() -> np.ndarray:
 
 def snap_filter(df):
     """
-    use to add new column that is True whenever ball was snapped and NaN or False otherwise
+    use to add new column that is True whenever ball was snapped and NaN or False
+    otherwise
     """
     if "ball_snap" in df.event.unique():
         frame = df.loc[df.event == "ball_snap", "frameId"].iat[0]
@@ -528,3 +532,135 @@ def prepare_plays_df(qb_spaces, week_wscout, plays):
     )
 
     return plays_with_collapse, off_cols, def_cols
+
+
+# region fit and predict
+def fit_and_predict_landmark(
+    data_df: pd.DataFrame,
+    test_data_df: pd.DataFrame,
+    Y: pd.DataFrame,
+    tau_landmark: int = 15,
+    tau: int = 30,
+    base_feat: list[str] = [
+        "yardsToGo",
+        "defendersInBox",
+        "Cover-0",
+        "Cover-1",
+        "Cover-2",
+        "Cover-6",
+        "misc_def",
+        "Quarters",  # cover 4
+        "2-Man",  # "cover 5"ish
+        "pff_playAction",
+        "down2",
+        "down3",
+        "shotgun",
+    ],
+    stratas: list[str] = ["shotgun", "pff_playAction"],
+) -> pd.DataFrame:
+    # use pocket size @ landmark (+ delta before) to predict cause specific hazards
+    # then check for rest of possession (i.e. at different taus)
+    # 0. prepare data
+    add_feat = [
+        f"poly_tau_{tau_landmark}",
+        f"delta_{tau_landmark}",
+    ]
+    data_df = data_df[data_df.time.gt(tau_landmark)]
+    test_data_df = test_data_df[test_data_df.time.gt(tau_landmark)]
+
+    # 1. fit models
+    collapse_cox = CoxPHFitter(strata=stratas)
+    collapse_cox.fit(
+        data_df[base_feat + add_feat + ["collapse_event", "time"]],
+        duration_col="time",
+        event_col="collapse_event",
+        robust=True,
+    )
+    pass_cox = CoxPHFitter(strata=stratas)
+    pass_cox.fit(
+        data_df[base_feat + add_feat + ["pass_event", "time"]],
+        duration_col="time",
+        event_col="pass_event",
+        robust=True,
+    )
+    print(
+        f"concodrdance collapse model: {collapse_cox.score(test_data_df, "concordance_index"):.4f}"
+    )
+    print(
+        f"concodrdance pass model: {pass_cox.score(test_data_df, "concordance_index"):.4f}"
+    )
+
+    # predict cause specific hazards
+    rel_tau = tau - tau_landmark
+    times = np.arange(rel_tau + 1)
+    cond_times = np.zeros(len(test_data_df)) + tau_landmark
+
+    cum_hazard_collapse = collapse_cox.predict_cumulative_hazard(
+        test_data_df[base_feat + add_feat + ["collapse_event", "time"]],
+        times=times,
+        conditional_after=cond_times,
+    ).T
+    diff_hazard_collapse = cum_hazard_collapse.diff(axis=1).fillna(0.0)
+
+    cum_hazard_pass = pass_cox.predict_cumulative_hazard(
+        test_data_df[base_feat + add_feat + ["pass_event", "time"]],
+        times=times,
+        conditional_after=cond_times,
+    ).T
+    diff_hazard_pass = cum_hazard_pass.diff(axis=1).fillna(0.0)
+
+    # compute cif
+    cum_hazard_agg = cum_hazard_pass + cum_hazard_collapse
+    diff_hazard_agg = cum_hazard_agg.diff(axis=1).fillna(0.0)
+    agg_survival = np.exp(-cum_hazard_agg).shift(axis=1, periods=1, fill_value=1.0)
+
+    cif_c = (
+        agg_survival
+        * (1 - np.exp(-diff_hazard_agg))
+        * diff_hazard_collapse
+        / diff_hazard_agg
+    ).sum(axis=1)
+    cif_p = (
+        agg_survival
+        * (1 - np.exp(-diff_hazard_agg))
+        * diff_hazard_pass
+        / diff_hazard_agg
+    ).sum(axis=1)
+    surv2 = 1 - cif_c - cif_p
+
+    preds = (
+        pd.concat(
+            [
+                cif_c,
+                cif_p,
+                surv2,
+                test_data_df["surv_frame"].le(tau)
+                & test_data_df["surv_frame"].lt(test_data_df["pass_frame"]),
+                test_data_df["pass_frame"].le(tau)
+                & test_data_df["pass_frame"].le(test_data_df["surv_frame"]),
+                test_data_df["surv_frame"].gt(tau) & test_data_df["pass_frame"].gt(tau),
+            ],
+            axis=1,
+        )
+        .rename(
+            columns={
+                0: "cif_c",
+                1: "cif_p",
+                2: "surv",
+                3: "collapse",
+                4: "pass",
+                5: "survived",
+            }
+        )
+        .dropna(axis=0)
+    )
+
+    print(f"brier score collapses: {brier_score_loss(preds.collapse, preds.cif_c):.4f}")
+    print(f"brier score passes: {brier_score_loss(preds["pass"], preds.cif_p):.4f}")
+    print(
+        f"brier score survival: {brier_score_loss(preds["survived"], preds["surv"]):.4f}"
+    )
+    return preds
+
+
+# region plot calibration
