@@ -193,4 +193,18 @@ if __name__ == "__main__":
         .sort_values("life expectancy")
         .head(5)
     )
+    print("#" * 30, " .. PASS RUSH ..", "#" * 30)
+    print(
+        pr_df.groupby("team")["life expectancy"]
+        .mean()
+        .sort_values(ascending=True)
+        .head(32)
+    )
+    print("#" * 30, " .. PASS BLOCK ..", "#" * 30)
+    print(
+        pb_df.groupby("team")["life expectancy"]
+        .mean()
+        .sort_values(ascending=False)
+        .head(32)
+    )
     print("#" * 80)
