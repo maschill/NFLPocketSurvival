@@ -15,7 +15,6 @@ from src.utils import create_nfl_field
 from src.utils import load_data
 from src.utils import life_expectancy
 
-
 if __name__ == "__main__":
     print(os.getcwd())
     games, plays, players, scouting, plays_with_collapse, off_cols, def_cols = (
@@ -193,18 +192,108 @@ if __name__ == "__main__":
         .sort_values("life expectancy")
         .head(5)
     )
+
+    # section teams pass rush
+    team_ple_def = []
+    for team_pr in tqdm(plays_with_collapse.defensiveTeam.unique()):
+        tdf = plays_with_collapse[
+            plays_with_collapse.surv_frame.notna()
+            & (plays_with_collapse.defensiveTeam == team_pr)
+        ]
+        x, y, conf_int = kaplan_meier_estimator(
+            (tdf.poly_frame > -1).to_numpy(),
+            tdf.surv_frame.to_numpy(),
+            conf_type="log-log",
+        )
+        le = life_expectancy(x, y)
+        team_ple_def.append(
+            {
+                "team": team_pr,
+                "life expectancy": le,
+                "num_snaps": tdf.shape[0],
+                "surv_median": tdf["surv_frame"].median(),
+                "collapse_median": tdf[tdf["poly_frame"] > -1]["surv_frame"].median(),
+                "mean_surv_res": (tdf["surv_frame"] - le).mean(),
+                "mean_collapse_res": (
+                    tdf[tdf["poly_frame"] > -1]["surv_frame"] - le
+                ).mean(),
+            }
+        )
+    tdf = plays_with_collapse[plays_with_collapse.surv_frame.notna()]
+    x, y, conf_int = kaplan_meier_estimator(
+        (tdf.poly_frame > -1).to_numpy(),
+        tdf.surv_frame.to_numpy(),
+        conf_type="log-log",
+    )
+    le = life_expectancy(x, y)
+    team_ple_def.append(
+        {
+            "team": "LEAGUE AVG",
+            "life expectancy": le,
+            "num_snaps": tdf.shape[0],
+            "surv_median": tdf["surv_frame"].median(),
+            "collapse_median": tdf[tdf["poly_frame"] > -1]["surv_frame"].median(),
+            "mean_surv_res": (tdf["surv_frame"] - le).mean(),
+            "mean_collapse_res": (
+                tdf[tdf["poly_frame"] > -1]["surv_frame"] - le
+            ).mean(),
+        }
+    )
+    gr_pr_df = pd.DataFrame(team_ple_def)
+
+    # section teams pass rush
     print("#" * 30, " .. PASS RUSH ..", "#" * 30)
-    print(
-        pr_df.groupby("team")["life expectancy"]
-        .mean()
-        .sort_values(ascending=True)
-        .head(32)
+    print(gr_pr_df.sort_values("life expectancy", ascending=True).head(35))
+
+    team_ple_off = []
+    for team_pb in tqdm(plays_with_collapse.possessionTeam.unique()):
+        tdf = plays_with_collapse[
+            plays_with_collapse.surv_frame.notna()
+            & (plays_with_collapse.possessionTeam == team_pb)
+        ]
+        x, y, conf_int = kaplan_meier_estimator(
+            (tdf.poly_frame > -1).to_numpy(),
+            tdf.surv_frame.to_numpy(),
+            conf_type="log-log",
+        )
+        le = life_expectancy(x, y)
+        team_ple_off.append(
+            {
+                "team": team_pb,
+                "life expectancy": le,
+                "num_snaps": tdf.shape[0],
+                "surv_median": tdf["surv_frame"].median(),
+                "collapse_median": tdf[tdf["poly_frame"] > -1]["surv_frame"].median(),
+                "mean_surv_res": (tdf["surv_frame"] - le).mean(),
+                "mean_collapse_res": (
+                    tdf[tdf["poly_frame"] > -1]["surv_frame"] - le
+                ).mean(),
+            }
+        )
+    tdf = plays_with_collapse[plays_with_collapse.surv_frame.notna()]
+    x, y, conf_int = kaplan_meier_estimator(
+        (tdf.poly_frame > -1).to_numpy(),
+        tdf.surv_frame.to_numpy(),
+        conf_type="log-log",
     )
+    le = life_expectancy(x, y)
+    team_ple_off.append(
+        {
+            "team": "LEAGUE AVG",
+            "life expectancy": le,
+            "num_snaps": tdf.shape[0],
+            "surv_median": tdf["surv_frame"].median(),
+            "collapse_median": tdf[tdf["poly_frame"] > -1]["surv_frame"].median(),
+            "mean_surv_res": (tdf["surv_frame"] - le).mean(),
+            "mean_collapse_res": (
+                tdf[tdf["poly_frame"] > -1]["surv_frame"] - le
+            ).mean(),
+        }
+    )
+    gr_pb_df = pd.DataFrame(team_ple_off)
     print("#" * 30, " .. PASS BLOCK ..", "#" * 30)
-    print(
-        pb_df.groupby("team")["life expectancy"]
-        .mean()
-        .sort_values(ascending=False)
-        .head(32)
-    )
+    print(gr_pb_df.sort_values("life expectancy", ascending=False).head(35))
+
     print("#" * 80)
+
+    print(pd.merge(gr_pb_df, gr_pr_df, on="team").corr("spearman", numeric_only=True))

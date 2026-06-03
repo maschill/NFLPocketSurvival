@@ -655,7 +655,9 @@ def fit_and_predict_landmark(
         .dropna(axis=0)
     )
 
-    print(f"brier score collapses: {brier_score_loss(preds.collapse, preds.cif_c):.4f}")
+    print(
+        f"brier score collapses: {brier_score_loss(preds["collapse"], preds.cif_c):.4f}"
+    )
     print(f"brier score passes: {brier_score_loss(preds["pass"], preds.cif_p):.4f}")
     print(
         f"brier score survival: {brier_score_loss(preds["survived"], preds["surv"]):.4f}"
